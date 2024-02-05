@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"github.com/google/go-tpm/legacy/tpm2"
+	"github.com/google/go-tpm/tpmutil"
 )
 
 var (
@@ -38,7 +39,7 @@ func nvRead(path string, auth string, index uint32) ([]byte, error) {
 	}
 	defer rw.Close()
 
-	nv, err := tpm2.NVReadEx(rw, index, tpm2.HandleOwner, auth, 0)
+	nv, err := tpm2.NVReadEx(rw, tpmutil.Handle(index), tpm2.HandleOwner, auth, 0)
 	if err != nil {
 		return nil, err
 	}
