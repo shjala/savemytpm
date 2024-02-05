@@ -18,7 +18,6 @@ import (
 	"io/ioutil"
 	"reflect"
 
-
 	"github.com/google/go-tpm/legacy/tpm2"
 	"github.com/google/go-tpm/tpmutil"
 	"google.golang.org/protobuf/proto"
@@ -53,13 +52,13 @@ func main() {
 	if *checkCert {
 		tpmPublicKey, err := readDevicePubFromTPM()
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "readDevicePubFromTPM: %v\n", err)
+			fmt.Fprintf(os.Stderr, "error when reading DevicePub from TPM: %v\n", err)
 			os.Exit(1)
 		}
 
 		filePublicKey, err := readDevicePubFromFile(*certPath)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "readDevicePubFromFile: %v\n", err)
+			fmt.Fprintf(os.Stderr, "error when reading DevicePub from file: %v\n", err)
 			os.Exit(1)
 		}
 
@@ -79,7 +78,7 @@ func main() {
 
 	pcrs, err := getPcrIndexes(strings.Split(*pcrIndexes, ","))
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "parsing pcr-indexes: %v\n", err)
+		fmt.Fprintf(os.Stderr, "error when parsing pcr-indexes: %v\n", err)
 		os.Exit(1)
 	}
 
@@ -88,7 +87,7 @@ func main() {
 		pcrSel := tpm2.PCRSelection{Hash: hashAlgo, PCRs: pcrs}
 		diskKey, err = getDiskKey(uint32(*privIndex), uint32(*pubIndex), uint32(*srkIndex), pcrSel)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "reading from the disk key: %v\n", err)
+			fmt.Fprintf(os.Stderr, "error when reading from the disk key: %v\n", err)
 			os.Exit(1)
 		}
 
@@ -99,21 +98,23 @@ func main() {
 	if *exportPlain && *output != "" {
 		fmt.Printf("[+] Saving disk key to %s\n", *output)
 		if err := os.WriteFile(string(*output), diskKey, 0644); err != nil {
-			fmt.Fprintf(os.Stderr, "writing to the output file: %v\n", err)
+			fmt.Fprintf(os.Stderr, "error when writing to the output file: %v\n", err)
 			os.Exit(1)
 		}
 		fmt.Printf("[+] disk key saved.\n")
 	}
 
 	if *exportCloud && *output != "" {
-		fmt.Printf("[+] Saving cloud-format encrypted disk key to %s\n", *output)
+		fmt.Printf("[+] Saving cloud-format encrypted disk key...\n")
+
 		encryptedDiskKey, err := encryptDecryptUsingTpm(diskKey, true)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "encrypting disk key: %v\n", err)
+			fmt.Fprintf(os.Stderr, "error when encrypting disk key: %v\n", err)
 			os.Exit(1)
 		}
-		if err := os.WriteFile(string(*output), encryptedDiskKey, 0644); err != nil {
-			fmt.Fprintf(os.Stderr, "writing to the output file: %v\n", err)
+
+		if err := os.WriteFile(string(*output) + ".raw", encryptedDiskKey, 0644); err != nil {
+			fmt.Fprintf(os.Stderr, "error when writing raw formatted key to the output file: %v\n", err)
 			os.Exit(1)
 		}
 
@@ -128,15 +129,30 @@ func main() {
 
 		encryptedVaultKey, err := proto.Marshal(keyData)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Failed to Marshal keyData %v", err)
+			fmt.Fprintf(os.Stderr, "error when marshaling AttestVolumeKeyData %v", err)
+			os.Exit(1)
+		}
+		
+		key := new(attest.AttestVolumeKey)
+		key.KeyType = attest.AttestVolumeKeyType_ATTEST_VOLUME_KEY_TYPE_VSK
+		key.Key = encryptedVaultKey
+
+		volumeKey, err := proto.Marshal(key)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "error when marshaling AttestVolumeKey %v", err)
+			os.Exit(1)
 		}
 
-		fmt.Printf("[+] marshalled storage keys for device: %v", encryptedVaultKey)
+		cloudDbFormat := fmt.Sprintf("0x%X", volumeKey)
+		if err := os.WriteFile(string(*output) + ".txt", []byte(cloudDbFormat), 0644); err != nil {
+			fmt.Fprintf(os.Stderr, "error when writing cloud formatted key to the output file: %v\n", err)
+			os.Exit(1)
+		}
 
 		fmt.Printf("[+] disk key saved.\n")
 	}
 
-	// TODO : 
+	// TODO :
 	// Import the disk key from the input file
 	// Reseal the disk key under new PCR indexes and hash algorithm
 }
