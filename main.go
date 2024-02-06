@@ -1,3 +1,6 @@
+// Quick and dirty tool, written in a span of a day,
+// to make some machines happpy.
+
 package main
 
 import (
