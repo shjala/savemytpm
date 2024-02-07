@@ -1,5 +1,7 @@
 #!/bin/sh
 
+devid=$(cat /persist/status/uuid)
+
 if [ ! -f savemytpm ]; then
     arch=$(arch)
     if [ "$arch" = 'x86_64' ]; then 
@@ -22,7 +24,6 @@ if [ $# -eq 0 ]; then
 fi
 
 if [ $1 = "eve-9.3-recover" ]; then
-    devid=$(sha1sum /config/device.cert.pem | awk '{print $1 }')
     outfile=$PWD/disk-key-encrypted-cloud
     logfile=$PWD/recovertpm.log
     tarfile=$PWD/recovertpm-out-id.$devid.tar.gz
@@ -48,7 +49,6 @@ if [ $1 = "eve-9.3-recover" ]; then
 fi
 
 if [ $1 = "eve-9.3-export-key-plain" ]; then
-    devid=$(sha1sum /config/device.cert.pem | awk '{print $1 }')
     outfile=$PWD/disk-key-plain.id.$devid.bin
     echo "[+] Device ID: $devid"
     echo "[+] Output file: $outfile"
