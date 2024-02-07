@@ -2,7 +2,7 @@
 This is tool made to conveniently extract [EVE](https://github.com/lf-edge/eve/) volume encryption key from TPM. It can extract keys both in plain text format and in an encrypted format suited for inserting into a cloud controller database like [Adam](https://github.com/lf-edge/adam) or [Zedcloud](https://zededa.com/). Note the that tool can only extract keys from TPM if the device state (current PCR values) match the original state where key was seald.
 
 #### Usage
-The tool compiles for Alpine envirnment (EVE's base). The `recover-tpm.sh` script has some predefined values to extract keys from specific versions of EVE, but the main tool is flexiable in its usage: 
+The tool compiles for Alpine envirnment (EVE's base). The `recover-tpm.sh` downloads the arch specific binary and comes with predefined values to extract keys from specific versions of EVE, but the main tool is flexiable in its usage:
 
 ```text
 $ ./savemytpm --help
