@@ -62,3 +62,22 @@ if [ $1 = "eve-9.3-export-key-plain" ]; then
                 --pub-index 0x1900000 --priv-index 0x1800000 --srk-index 0x81000002 \
                 --pcr-hash sha1 --pcr-index "0, 1, 2, 3, 4, 6, 7, 8, 9, 13"
 fi
+
+
+# remount config and delete the cert and the export it
+# tpm2 evictcontrol -C o -c 0x81000005
+# tpm2 evictcontrol -C o -c 0x817FFFFF
+# ./savemytpm.amd64 --remove-ecdh --ecdh-index 0x81000005
+# ./savemytpm.amd64 --gen-ecdh --ecdh-index 0x81000005
+# ./savemytpm.amd64 --gen-dev-key --dev-key-index 0x817FFFFF
+# ./savemytpm.amd64 --remove-dev-key --dev-key-index 0x817FFFFF
+# ./savemytpm.amd64 --init-tpm --test-ecdh-dev-key --ecdh-index 0x81000005 --dev-key-index 0x817FFFFF --test-count 1
+
+# TODO:
+# 1. test ecdh if sucessfull then go to replace ecdh and test again
+# ./savemytpm --test-sys-ecdh --ecdh-index 0x81000005 --cert-index 0x817FFFFF --test-count 20
+# ./savemytpm --test-ecdh --ecdh-index 0x81000003 --cert-index 0x817FFFFF --test-count 20
+# ./savemytpm --test-dev-key --ecdh-index 0x81000005 --cert-index 0x827FFFFF --test-count 20
+# ./savemytpm --test-sys-ecdh --ecdh-index 0x81000005 --cert-index 0x817FFFFF --test-count 20
+# ./savemytpm --test-ecdh-dev-key --ecdh-index 0x81000005 --cert-index 0x817FFFFF --test-count 1000000
+# tpm2 evictcontrol -A o -H 0x81000003  -S 0x81000003
