@@ -4,53 +4,66 @@
 package main
 
 import (
-	"flag"
-	"fmt"
-	"os"
-	"io"
-	"strings"
-	"strconv"
+	"crypto"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/ecdsa"
 	"crypto/sha256"
-	"math/big"
-	"crypto"
 	"crypto/x509"
 	"encoding/pem"
+	"flag"
+	"fmt"
+	"io"
 	"io/ioutil"
+	"math/big"
+	"os"
 	"reflect"
+	"strconv"
+	"strings"
+	"unsafe"
 
 	"github.com/google/go-tpm/legacy/tpm2"
 	"github.com/google/go-tpm/tpmutil"
-	"google.golang.org/protobuf/proto"
 	"github.com/lf-edge/eve/api/go/attest"
+	"google.golang.org/protobuf/proto"
 )
 
 var (
-	tpmPath = flag.String("tpm-path", "/dev/tpm0", "Path to the TPM device (character device or a Unix socket)")
-	tpmPass = flag.String("tpm-pass", "", "TPM device password (if needed)")
-	pubIndex = flag.Uint("pub-index", 0, "Disk key public key NVRAM index")
-	privIndex = flag.Uint("priv-index", 0, "Disk Key private key NVRAM index")
-	srkIndex = flag.Uint("srk-index", 0, "SRK index")
-	ecdhIndex = flag.Uint("ecdh-index", 0, "ECDH index")
-	certIndex = flag.Uint("cert-index", 0, "Device Cert index")
-	certPath = flag.String("cert-path", "", "Path to the device cert file")
-	pcrHash = flag.String("pcr-hash", "sha1", "PCR Hash algorithm (sha1, sha256)")
-	pcrIndexes = flag.String("pcr-index", "0, 1, 2, 3, 4, 6, 7, 8, 9, 13", "PCR Indexes to use for sealing and unsealing")
-	exportPlain = flag.Bool("export-plain", false, "Export the disk key in plain text")
-	exportCloud = flag.Bool("export-cloud", false, "Export the disk key in cloud encrypted form")
+	tpmPath         = flag.String("tpm-path", "/dev/tpm0", "Path to the TPM device (character device or a Unix socket)")
+	tpmPass         = flag.String("tpm-pass", "", "TPM device password (if needed)")
+	pubIndex        = flag.Uint("pub-index", 0, "Disk key public key NVRAM index")
+	privIndex       = flag.Uint("priv-index", 0, "Disk Key private key NVRAM index")
+	srkIndex        = flag.Uint("srk-index", 0, "SRK index")
+	ecdhIndex       = flag.Uint("ecdh-index", 0, "ECDH index")
+	certIndex       = flag.Uint("cert-index", 0, "Device Cert index")
+	certPath        = flag.String("cert-path", "", "Path to the device cert file")
+	pcrHash         = flag.String("pcr-hash", "sha1", "PCR Hash algorithm (sha1, sha256)")
+	pcrIndexes      = flag.String("pcr-index", "0, 1, 2, 3, 4, 6, 7, 8, 9, 13", "PCR Indexes to use for sealing and unsealing")
+	exportPlain     = flag.Bool("export-plain", false, "Export the disk key in plain text")
+	exportCloud     = flag.Bool("export-cloud", false, "Export the disk key in cloud encrypted form")
 	exportEncrypted = flag.Bool("export-encrypted", false, "Export the disk key in encrypted form")
-	importPlain = flag.Bool("import-plain", false, "Import the disk key in plain text")
+	importPlain     = flag.Bool("import-plain", false, "Import the disk key in plain text")
 	importEncrypted = flag.Bool("import-encrypted", false, "Import the disk key in encrypted form")
-	reseal = flag.Bool("reseal", false, "Reseal the disk key under new PCR indexes and hash algorithm")
-	output = flag.String("output", "", "Output file for the disk key")
-	input = flag.String("input", "", "Input file for the disk key")
-	checkCert = flag.Bool("check-cert", false, "Check the device cert from disk against the TPM")
+	reseal          = flag.Bool("reseal", false, "Reseal the disk key under new PCR indexes and hash algorithm")
+	output          = flag.String("output", "", "Output file for the disk key")
+	input           = flag.String("input", "", "Input file for the disk key")
+	tpmInfo         = flag.Bool("tpm-info", false, "Print TPM information")
+	checkCert       = flag.Bool("check-cert", false, "Check the device cert from disk against the TPM")
 )
 
 func main() {
 	initArgs()
+
+	if *tpmInfo {
+		info, err := fetchTpmHwInfo()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "error when fetching TPM info: %v\n", err)
+			os.Exit(1)
+		}
+
+		fmt.Printf("[+] TPM Info: %s\n", info)
+		return
+	}
 
 	if *checkCert {
 		tpmPublicKey, err := readDevicePubFromTPM()
@@ -116,7 +129,7 @@ func main() {
 			os.Exit(1)
 		}
 
-		if err := os.WriteFile(string(*output) + ".raw", encryptedDiskKey, 0644); err != nil {
+		if err := os.WriteFile(string(*output)+".raw", encryptedDiskKey, 0644); err != nil {
 			fmt.Fprintf(os.Stderr, "error when writing raw formatted key to the output file: %v\n", err)
 			os.Exit(1)
 		}
@@ -135,7 +148,7 @@ func main() {
 			fmt.Fprintf(os.Stderr, "error when marshaling AttestVolumeKeyData %v", err)
 			os.Exit(1)
 		}
-		
+
 		key := new(attest.AttestVolumeKey)
 		key.KeyType = attest.AttestVolumeKeyType_ATTEST_VOLUME_KEY_TYPE_VSK
 		key.Key = encryptedVaultKey
@@ -147,12 +160,22 @@ func main() {
 		}
 
 		cloudDbFormat := fmt.Sprintf("0x%X", volumeKey)
-		if err := os.WriteFile(string(*output) + ".txt", []byte(cloudDbFormat), 0644); err != nil {
+		if err := os.WriteFile(string(*output)+".txt", []byte(cloudDbFormat), 0644); err != nil {
 			fmt.Fprintf(os.Stderr, "error when writing cloud formatted key to the output file: %v\n", err)
 			os.Exit(1)
 		}
 
 		fmt.Printf("[+] disk key saved.\n")
+	}
+
+	if *reseal {
+		fmt.Printf("[!] not implemented yet...\n")
+		return
+	}
+
+	if *importPlain || *importEncrypted {
+		fmt.Printf("[!] not implemented yet...\n")
+		return
 	}
 
 	// TODO :
@@ -209,6 +232,122 @@ func initArgs() {
 			os.Exit(1)
 		}
 	}
+}
+
+const (
+	tpmPropertyManufacturer tpm2.TPMProp = 0x105
+	tpmPropertyVendorStr1   tpm2.TPMProp = 0x106
+	tpmPropertyVendorStr2   tpm2.TPMProp = 0x107
+	tpmPropertyFirmVer1     tpm2.TPMProp = 0x10b
+	tpmPropertyFirmVer2     tpm2.TPMProp = 0x10c
+)
+
+var vendorRegistry = map[uint32]string{
+	0x414D4400: "AMD",
+	0x41544D4C: "Atmel",
+	0x4252434D: "Broadcom",
+	0x48504500: "HPE",
+	0x49424d00: "IBM",
+	0x49465800: "Infineon",
+	0x494E5443: "Intel",
+	0x4C454E00: "Lenovo",
+	0x4D534654: "Microsoft",
+	0x4E534D20: "National SC",
+	0x4E545A00: "Nationz",
+	0x4E544300: "Nuvoton",
+	0x51434F4D: "Qualcomm",
+	0x534D5343: "SMSC",
+	0x53544D20: "ST Microelectronics",
+	0x534D534E: "Samsung",
+	0x534E5300: "Sinosun",
+	0x54584E00: "Texas Instruments",
+	0x57454300: "Winbond",
+	0x524F4343: "Fuzhou Rockchip",
+	0x474F4F47: "Google",
+}
+
+// GetTpmProperty fetches a given property id, and returns it as uint32
+func getTpmProperty(propID tpm2.TPMProp) (uint32, error) {
+	rw, err := tpm2.OpenTPM(*tpmPath)
+	if err != nil {
+		return 0, err
+	}
+	defer rw.Close()
+
+	v, _, err := tpm2.GetCapability(rw, tpm2.CapabilityTPMProperties,
+		1, uint32(propID))
+	if err != nil {
+		return 0, err
+	}
+	prop, ok := v[0].(tpm2.TaggedProperty)
+	if !ok {
+		return 0, fmt.Errorf("fetching TPM property %X failed", propID)
+	}
+	return prop.Value, nil
+}
+
+func getModelName(vendorValue1 uint32, vendorValue2 uint32) string {
+	uintToByteArr := func(value uint32) []byte {
+		get8 := func(val uint32, offset uint32) uint8 {
+			return (uint8)((val >> ((3 - offset) * 8)) & 0xff)
+		}
+		var i uint32
+		var bytes []byte
+		for i = 0; i < uint32(unsafe.Sizeof(value)); i++ {
+			c := get8(value, i)
+			bytes = append(bytes, c)
+		}
+		return bytes
+	}
+	var model []byte
+	model = append(model, uintToByteArr(vendorValue1)...)
+	model = append(model, uintToByteArr(vendorValue2)...)
+	return string(model)
+}
+
+func getFirmwareVersion(v1 uint32, v2 uint32) string {
+	get16 := func(val uint32, offset uint32) uint16 {
+		return uint16((val >> ((1 - offset) * 16)) & 0xFFFF)
+	}
+	return fmt.Sprintf("%d.%d.%d.%d", get16(v1, 0), get16(v1, 1),
+		get16(v2, 0), get16(v2, 1))
+}
+
+func fetchTpmHwInfo() (string, error) {
+	tpmHwInfo := ""
+	//Take care of non-TPM platforms
+	if _, err := os.Stat(*tpmPath); err != nil {
+		tpmHwInfo = "Not Available"
+		//nolint:nilerr
+		return tpmHwInfo, nil
+	}
+
+	//First time. Fetch it from TPM and cache it.
+	v1, err := getTpmProperty(tpmPropertyManufacturer)
+	if err != nil {
+		return "", err
+	}
+	v2, err := getTpmProperty(tpmPropertyVendorStr1)
+	if err != nil {
+		return "", err
+	}
+	v3, err := getTpmProperty(tpmPropertyVendorStr2)
+	if err != nil {
+		return "", err
+	}
+	v4, err := getTpmProperty(tpmPropertyFirmVer1)
+	if err != nil {
+		return "", err
+	}
+	v5, err := getTpmProperty(tpmPropertyFirmVer2)
+	if err != nil {
+		return "", err
+	}
+	tpmHwInfo = fmt.Sprintf("%s-%s, FW Version %s", vendorRegistry[v1],
+		getModelName(v2, v3),
+		getFirmwareVersion(v4, v5))
+
+	return tpmHwInfo, nil
 }
 
 func getPcrIndexes(pcrs []string) ([]int, error) {
@@ -381,12 +520,10 @@ func readDevicePubFromTPM() (crypto.PublicKey, error) {
 	if err != nil {
 		return nil, err
 	}
-
 	publicKey, err := deviceKey.Key()
 	if err != nil {
 		return nil, err
 	}
-
 	return publicKey, nil
 }
 
@@ -415,7 +552,6 @@ func deriveEncryptDecryptKey() ([32]byte, error) {
 	if !ok {
 		return [32]byte{}, fmt.Errorf("Not an ECDH compatible key: %T", publicKey)
 	}
-
 	EncryptDecryptKey, err := deriveSessionKey(eccPublicKey.X, eccPublicKey.Y, eccPublicKey)
 	if err != nil {
 		return [32]byte{}, fmt.Errorf("EncryptSecretWithDeviceKey failed with %v", err)

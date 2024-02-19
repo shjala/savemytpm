@@ -20,7 +20,13 @@ if [ $# -eq 0 ]; then
     echo "Commands:"
     echo "  eve-9.3-recover : Verify TPM and disk certs, export disk key in encrypted cloud format for EVE 9.3"
     echo "  eve-9.3-export-key-plain : Export disk key in plain text format for EVE 9.3"
+    echo "  eve-check-cert : Check TPM and disk certs matching"
     exit 1
+fi
+
+if [ $1 = "eve-check-cert" ]; then
+   echo "[+] Checking TPM and disk certs"
+    ./savemytpm --check-cert --cert-path "/config/device.cert.pem" --cert-index 0x817FFFFF 2>&1
 fi
 
 if [ $1 = "eve-9.3-recover" ]; then
