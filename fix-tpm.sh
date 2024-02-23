@@ -63,14 +63,6 @@ if [ $OLD_RELEASE -eq 1 ]; then
     PCR_INDEX="0, 1, 2, 3, 4, 6, 7, 8, 9, 13"
 fi
 
-if [ $1 = "sim-ecdh-issue" ]; then
-    ./savemytpm --remove-ecdh --ecdh-index $ECDH_INDEX
-    if [ $? -ne 0 ]; then
-        echo "[===>] ERR - can't simulate the ECDH issue..." | tee -a $LOG
-        exit 1
-    fi
-fi
-
 echo "[===>] Exporting disk key in plain text format... " | tee -a $LOG
 ./savemytpm --export-plain --output $KEY_PLAIN \
             --pub-index $VAULT_PUB_INDEX --priv-index $VAULT_PRIV_INDEX --srk-index $SRK_INDEX \
@@ -93,7 +85,7 @@ echo "[===>] Exporting disk key in cloud format... " | tee -a $LOG
             --pub-index $VAULT_PUB_INDEX --priv-index $VAULT_PRIV_INDEX --srk-index $SRK_INDEX \
             --ecdh-index $ECDH_INDEX --dev-key-index $DEVICE_CERT_TPM_INDEX \
             -pcr-hash $PCR_HASH --pcr-index "$PCR_INDEX" --log $LOG
-if [ $? -ne 0 ]; then
+if [ $? -ne 0 ] || [ $1 = "--force" ]; then
     echo "[===>] ERR - Exporting cloud format disk key failed, initating recovery process..." | tee -a $LOG
     echo "[===>] Generating a temporary ECDH key." | tee -a $LOG
     ./savemytpm --gen-ecdh --ecdh-index $NEW_ECDH_INDEX
