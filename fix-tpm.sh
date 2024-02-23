@@ -85,7 +85,7 @@ echo "[===>] Exporting disk key in cloud format... " | tee -a $LOG
             --pub-index $VAULT_PUB_INDEX --priv-index $VAULT_PRIV_INDEX --srk-index $SRK_INDEX \
             --ecdh-index $ECDH_INDEX --dev-key-index $DEVICE_CERT_TPM_INDEX \
             -pcr-hash $PCR_HASH --pcr-index "$PCR_INDEX" --log $LOG
-if [ $? -ne 0 ] || [ $1 = "--force" ]; then
+if [ $? -ne 0 ] || [ "${1-}" = "--force" ]; then
     echo "[===>] ERR - Exporting cloud format disk key failed, initating recovery process..." | tee -a $LOG
     echo "[===>] Generating a temporary ECDH key." | tee -a $LOG
     ./savemytpm --gen-ecdh --ecdh-index $NEW_ECDH_INDEX
@@ -114,9 +114,7 @@ if [ $? -ne 0 ] || [ $1 = "--force" ]; then
     echo "[===>] Replacing the old ECDH key with fresh key..." | tee -a $LOG
     ./savemytpm --remove-ecdh --ecdh-index $ECDH_INDEX --log $LOG
     if [ $? -ne 0 ]; then
-        echo "[===>] ERR - Removing old ecdh key failed, can't recover from this..." | tee -a $LOG
-        tar_logs
-        exit 1
+        echo "[===>] ERR - Removing old ecdh key failed, continuing..." | tee -a $LOG
     fi
     ./savemytpm --gen-ecdh --ecdh-index $ECDH_INDEX --log $LOG
     if [ $? -ne 0 ]; then
@@ -130,7 +128,7 @@ if [ $? -ne 0 ] || [ $1 = "--force" ]; then
                 --dev-key-index $DEVICE_CERT_TPM_INDEX \
                 --cert-path $DEVICE_CERT_PATH --log $LOG
     if [ $? -ne 0 ]; then
-        echo "[===>] ERR - Writing ECDH cert to disk failed, continuing ..." | tee -a $LOG
+        echo "[===>] ERR - Writing ECDH cert to disk failed, can't recover from this ..." | tee -a $LOG
         tar_logs
         exit 1
     fi
