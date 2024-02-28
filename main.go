@@ -228,6 +228,7 @@ var (
 	writeECDHCert     = flag.Bool("write-ecdh-cert", false, "Write the ECDH cert to disk")
 	genDevKey         = flag.Bool("gen-dev-key", false, "Generate a new device key")
 	checkCert         = flag.Bool("check-cert", false, "Check the device cert from disk against the TPM")
+	checkECDHTemplate = flag.Bool("check-ecdh-template", false, "Check the ECDH key template is correct")
 	logFile           = flag.String("log", "", "log file path")
 )
 
@@ -533,6 +534,30 @@ func main() {
 			}
 
 			log("[+] disk key saved.\n")
+		}
+	}
+
+	if *checkECDHTemplate {
+		if *ecdhIndex != 0 {
+			log("[+] Checking ECDH key template\n")
+			err := checkEcdhKeyTemplate(tpmutil.Handle(*ecdhIndex), defaultEcdhKeyTemplate)
+			if err != nil {
+				log("error when checking ECDH key template: %v\n", err)
+				os.Exit(1)
+			}
+
+			log("[+] ECDH key template is correct\n")
+		}
+
+		if *devKeyIndex != 0 {
+			log("[+] Checking device key template\n")
+			err := checkEcdhKeyTemplate(tpmutil.Handle(*devKeyIndex), defaultKeyParams)
+			if err != nil {
+				log("error when checking device key template: %v\n", err)
+				os.Exit(1)
+			}
+
+			log("[+] Device key template is correct\n")
 		}
 	}
 
@@ -856,8 +881,15 @@ func deriveSessionKey(X, Y *big.Int, publicKey *ecdsa.PublicKey) ([32]byte, erro
 	defer rw.Close()
 	p := tpm2.ECPoint{XRaw: X.Bytes(), YRaw: Y.Bytes()}
 
+	auth := ""
+	if *ecdhIndex == *devKeyIndex {
+		auth, err = readOwnerCrdl()
+		if err != nil {
+			return [32]byte{}, fmt.Errorf("error in reading owner credential: %v", err)
+		}
+	}
 	//Recover the key, and decrypt the message
-	z, err := tpm2.ECDHZGen(rw, tpmutil.Handle(*ecdhIndex), "", p)
+	z, err := tpm2.ECDHZGen(rw, tpmutil.Handle(*ecdhIndex), auth, p)
 	if err != nil {
 		return [32]byte{}, fmt.Errorf("deriveSessionKey failed: %v", err)
 	}
@@ -1223,6 +1255,46 @@ func TpmSign(digest []byte) (*big.Int, *big.Int, error) {
 		return nil, nil, fmt.Errorf("signing data using TPM failed: %w", err)
 	}
 	return sig.ECC.R, sig.ECC.S, nil
+}
+
+func checkEcdhKeyTemplate(index tpmutil.Handle, template tpm2.Public) error {
+	rw, err := tpm2.OpenTPM(*tpmPath)
+	if err != nil {
+		return fmt.Errorf("error in opening TPM: %v", err)
+	}
+	defer rw.Close()
+
+	ecdhKey, _, _, err := tpm2.ReadPublic(rw, index)
+	if err != nil {
+		return fmt.Errorf("error in reading ECDH key from TPM: %v", err)
+	}
+
+	if ecdhKey.NameAlg != template.NameAlg {
+		return fmt.Errorf("ECDH key nameAlg mismatch: %v", ecdhKey.NameAlg)
+	}
+
+	if ecdhKey.Type != template.Type {
+		return fmt.Errorf("ECDH key type mismatch: %v", ecdhKey.Type)
+	}
+
+	if ecdhKey.ECCParameters.CurveID != template.ECCParameters.CurveID {
+		return fmt.Errorf("ECDH key curveID mismatch: %v", ecdhKey.ECCParameters.CurveID)
+	}
+
+	if ecdhKey.Attributes != template.Attributes {
+		return fmt.Errorf("ECDH key attributes mismatch: %v", ecdhKey.Attributes)
+	}
+
+	publicKey, err := ecdhKey.Key()
+	if err != nil {
+		return fmt.Errorf("error in getting ECDH public key: %v", err)
+	}
+
+	if _, ok := publicKey.(*ecdsa.PublicKey); !ok {
+		return fmt.Errorf("not an ECDH compatible key: %T", publicKey)
+	}
+
+	return nil
 }
 
 func log(format string, args ...interface{}) {

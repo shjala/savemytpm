@@ -72,15 +72,44 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
-echo "[===>] Checking TPM and disk certs..."
+echo "[===>] Checking device key public part form disk matchs TPM stored..."
 ./savemytpm --check-cert --cert-path $DEVICE_CERT_PATH --dev-key-index 0x817FFFFF --log $LOG
 if [ $? -ne 0 ]; then
     echo "[===>] ERR - Checking TPM and disk certs failed, can't do anything more :(" | tee -a $LOG
     tar_logs
     exit 1
+else
+    echo "[===>] TPM stored public key maatches the disk cert." | tee -a $LOG
 fi
 
-echo "[===>] Exporting disk key in cloud format... " | tee -a $LOG
+echo "[===>] Checking TPM ECDH key ecdh template... " | tee -a $LOG
+./savemytpm --check-ecdh-template --ecdh-index $ECDH_INDEX --log $LOG
+if [ $? -ne 0 ]; then
+    echo "[===>] ERR - ECDH key template is invalid" | tee -a $LOG
+else
+    echo "[===>] ECDH key template is valid." | tee -a $LOG
+fi
+
+echo "[===>] Checking TPM device key ecdh template... " | tee -a $LOG
+./savemytpm --check-ecdh-template --dev-key-index $DEVICE_CERT_TPM_INDEX --log $LOG
+if [ $? -ne 0 ]; then
+    echo "[===>] ERR - device key template is invalid" | tee -a $LOG
+else
+    echo "[===>] device key template is valid." | tee -a $LOG
+fi
+
+echo "[===>] Checking TPM device private part validity... " | tee -a $LOG
+./savemytpm --export-cloud --output $KEY_ENCRYPTED \
+            --pub-index $VAULT_PUB_INDEX --priv-index $VAULT_PRIV_INDEX --srk-index $SRK_INDEX \
+            --ecdh-index $DEVICE_CERT_TPM_INDEX --dev-key-index $DEVICE_CERT_TPM_INDEX \
+            -pcr-hash $PCR_HASH --pcr-index "$PCR_INDEX" --log $LOG
+if [ $? -ne 0 ]; then
+    echo "[===>] ERR - Device key private part is invalid!!!" | tee -a $LOG 
+else
+    echo "[===>] Device key private part is valid." | tee -a $LOG
+fi
+
+echo "[===>] Exporting disk key in cloud format with ECDH key... " | tee -a $LOG
 ./savemytpm --export-cloud --output $KEY_ENCRYPTED \
             --pub-index $VAULT_PUB_INDEX --priv-index $VAULT_PRIV_INDEX --srk-index $SRK_INDEX \
             --ecdh-index $ECDH_INDEX --dev-key-index $DEVICE_CERT_TPM_INDEX \
@@ -104,17 +133,17 @@ if [ $? -ne 0 ] || [ "${1-}" = "--force" ]; then
         tar_logs
         exit 1
     fi
-    echo "[===>] Exporting cloud format with temporary key successfull." | tee -a $LOG
+    echo "[===>] Exporting cloud format with temporary ECDH key was successfull." | tee -a $LOG
     echo "[===>] Removing the temporary ECDH key." | tee -a $LOG
     ./savemytpm --remove-ecdh --ecdh-index $NEW_ECDH_INDEX --log $LOG
     if [ $? -ne 0 ]; then
         echo "[===>] ERR - Removing temporary ECDH key failed, continuing ..." | tee -a $LOG
     fi
     echo "[===>] Temporary ECDH removed." | tee -a $LOG
-    echo "[===>] Replacing the old ECDH key with fresh key..." | tee -a $LOG
+    echo "[===>] Replacing the default ECDH key with a fresh key..." | tee -a $LOG
     ./savemytpm --remove-ecdh --ecdh-index $ECDH_INDEX --log $LOG
     if [ $? -ne 0 ]; then
-        echo "[===>] ERR - Removing old ecdh key failed, continuing..." | tee -a $LOG
+        echo "[===>] ERR - Removing default ecdh key failed, continuing..." | tee -a $LOG
     fi
     ./savemytpm --gen-ecdh --ecdh-index $ECDH_INDEX --log $LOG
     if [ $? -ne 0 ]; then
@@ -122,7 +151,7 @@ if [ $? -ne 0 ] || [ "${1-}" = "--force" ]; then
         tar_logs
         exit 1
     fi
-    echo "[===>] System ECDH key replaced in TPM." | tee -a $LOG
+    echo "[===>] Default ECDH key replaced in TPM." | tee -a $LOG
     echo "[===>] Writing ECDH cert to disk..." | tee -a $LOG
     ./savemytpm --write-ecdh-cert --ecdh-index $ECDH_INDEX \
                 --dev-key-index $DEVICE_CERT_TPM_INDEX \
