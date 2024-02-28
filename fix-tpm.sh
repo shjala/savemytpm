@@ -63,6 +63,25 @@ if [ $OLD_RELEASE -eq 1 ]; then
     PCR_INDEX="0, 1, 2, 3, 4, 6, 7, 8, 9, 13"
 fi
 
+if [ $? -ne 0 ] || [ "${1-}" = "--check-key" ]; then
+    CERT="${2-}"
+    if [ -z "$CERT" ]; then
+        echo "[===>] ERR - No device key provided." | tee -a $LOG
+        exit 1
+    fi
+    echo "[===>] Checking device key... " | tee -a $LOG
+    ./savemytpm --export-cloud --output $KEY_ENCRYPTED --use-disk-pub-key --cert-path $CERT \
+            --pub-index $VAULT_PUB_INDEX --priv-index $VAULT_PRIV_INDEX --srk-index $SRK_INDEX \
+            --ecdh-index $ECDH_INDEX --dev-key-index $DEVICE_CERT_TPM_INDEX \
+            -pcr-hash $PCR_HASH --pcr-index "$PCR_INDEX" --log $LOG
+    if [ $? -ne 0 ]; then
+        echo "[===>] ERR - Provided device key is invalid!!!" | tee -a $LOG
+        exit 1
+    fi
+    echo "[===>] Provided device key is valid." | tee -a $LOG
+    exit 0
+fi
+
 echo "[===>] Exporting disk key in plain text format... " | tee -a $LOG
 ./savemytpm --export-plain --output $KEY_PLAIN \
             --pub-index $VAULT_PUB_INDEX --priv-index $VAULT_PRIV_INDEX --srk-index $SRK_INDEX \

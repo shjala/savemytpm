@@ -229,6 +229,7 @@ var (
 	genDevKey         = flag.Bool("gen-dev-key", false, "Generate a new device key")
 	checkCert         = flag.Bool("check-cert", false, "Check the device cert from disk against the TPM")
 	checkECDHTemplate = flag.Bool("check-ecdh-template", false, "Check the ECDH key template is correct")
+	useDiskPubKey     = flag.Bool("use-disk-pub-key", false, "For ECDH key gen, use the public key from the disk")
 	logFile           = flag.String("log", "", "log file path")
 )
 
@@ -931,14 +932,29 @@ func readDevicePubFromFile(certFile string) (crypto.PublicKey, error) {
 }
 
 func deriveEncryptDecryptKey() ([32]byte, error) {
-	publicKey, err := readDevicePubFromTPM()
-	if err != nil {
-		return [32]byte{}, fmt.Errorf("error in readDevicePubFromTPM: %s", err)
+	var devCertPublicKey crypto.PublicKey
+	if *useDiskPubKey {
+		log("[+] Using public key from disk (%s)\n", *certPath)
+		pk, err := readDevicePubFromFile(*certPath)
+		if err != nil {
+			log("error when reading DevicePub from file: %v\n", err)
+			os.Exit(1)
+		}
+		devCertPublicKey = pk
+	} else {
+		log("[+] Using public key from TPM\n")
+		pk, err := readDevicePubFromTPM()
+		if err != nil {
+			return [32]byte{}, fmt.Errorf("error in readDevicePubFromTPM: %s", err)
+		}
+		devCertPublicKey = pk
 	}
-	eccPublicKey, ok := publicKey.(*ecdsa.PublicKey)
+
+	eccPublicKey, ok := devCertPublicKey.(*ecdsa.PublicKey)
 	if !ok {
-		return [32]byte{}, fmt.Errorf("not an ECDH compatible key: %T", publicKey)
+		return [32]byte{}, fmt.Errorf("not an ECDH compatible key: %T", devCertPublicKey)
 	}
+
 	EncryptDecryptKey, err := deriveSessionKey(eccPublicKey.X, eccPublicKey.Y, eccPublicKey)
 	if err != nil {
 		return [32]byte{}, fmt.Errorf("EncryptSecretWithDeviceKey failed with %v", err)
