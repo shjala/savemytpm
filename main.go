@@ -8,6 +8,7 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/ecdsa"
+	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/x509"
@@ -880,7 +881,10 @@ func deriveSessionKey(X, Y *big.Int, publicKey *ecdsa.PublicKey) ([32]byte, erro
 		return [32]byte{}, fmt.Errorf("TPM open failed: %v", err)
 	}
 	defer rw.Close()
-	p := tpm2.ECPoint{XRaw: X.Bytes(), YRaw: Y.Bytes()}
+	p := tpm2.ECPoint{
+		XRaw: eccIntToBytes(publicKey.Curve, X),
+		YRaw: eccIntToBytes(publicKey.Curve, Y),
+	}
 
 	auth := ""
 	if *ecdhIndex == *devKeyIndex {
@@ -1331,4 +1335,10 @@ func log(format string, args ...interface{}) {
 			return
 		}
 	}
+}
+
+func eccIntToBytes(curve elliptic.Curve, i *big.Int) []byte {
+	bytes := i.Bytes()
+	curveBytes := (curve.Params().BitSize + 7) / 8
+	return append(make([]byte, curveBytes-len(bytes)), bytes...)
 }
