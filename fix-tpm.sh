@@ -6,7 +6,7 @@ OUTDIR=$PWD/recovertpm-out
 KEY_PLAIN=$OUTDIR/disk-key-plain.id.$ID.bin
 KEY_ENCRYPTED=$OUTDIR/disk-key-enc.id.$ID.txt
 LOG=$OUTDIR/recovertpm.log
-TAR_FILE=$PWD/recovertpm-out-id.$ID.tar.gz
+TAR_FILE=/persist/recovertpm-out-id.$ID.tar.gz
 DEVICE_CERT_NAME="device.cert.pem"
 DEVICE_CERT_PATH="/config/$DEVICE_CERT_NAME"
 EVE_RELEASE=$(cat /run/eve-release)
@@ -21,7 +21,7 @@ PCR_INDEX="0, 1, 2, 3, 4, 6, 7, 8, 9, 13, 14"
 OLD_RELEASE=0
 
 tar_logs() {
-    echo "[===>] Collect the tar file" | tee -a $LOG
+    echo "[===>] Collect the tar file from $TAR_FILE" | tee -a $LOG
     tar -czvf $TAR_FILE $OUTDIR >> /dev/null 2>&1
     rm $LOG
     rm -rf $OUTDIR
@@ -67,6 +67,7 @@ if [ $? -ne 0 ] || [ "${1-}" = "--check-key" ]; then
     CERT="${2-}"
     if [ -z "$CERT" ]; then
         echo "[===>] ERR - No device key provided." | tee -a $LOG
+        tar_logs
         exit 1
     fi
     echo "[===>] Checking device key... " | tee -a $LOG
@@ -76,9 +77,11 @@ if [ $? -ne 0 ] || [ "${1-}" = "--check-key" ]; then
             -pcr-hash $PCR_HASH --pcr-index "$PCR_INDEX" --log $LOG
     if [ $? -ne 0 ]; then
         echo "[===>] ERR - Provided device key is invalid!!!" | tee -a $LOG
+        tar_logs
         exit 1
     fi
     echo "[===>] Provided device key is valid." | tee -a $LOG
+    tar_logs
     exit 0
 fi
 
@@ -88,6 +91,7 @@ echo "[===>] Exporting disk key in plain text format... " | tee -a $LOG
             --pcr-hash $PCR_HASH --pcr-index "$PCR_INDEX"
 if [ $? -ne 0 ]; then
     echo "[===>] ERR - Exporting disk key failed, can't do anything more :(" | tee -a $LOG
+    tar_logs
     exit 1
 fi
 
