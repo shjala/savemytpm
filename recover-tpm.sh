@@ -5,11 +5,11 @@ devid=$(cat /persist/status/uuid)
 if [ ! -f savemytpm ]; then
     arch=$(arch)
     if [ "$arch" = 'x86_64' ]; then 
-        wget https://github.com/shjala/savemytpm/raw/main/out/savemytpm.amd64 > /dev/null 2>&1
+        wget https://github.com/shjala/savemytpm/raw/refs/heads/experiment-2/pre-built/savemytpm.amd64 > /dev/null 2>&1
         mv savemytpm.amd64 savemytpm
         chmod +x savemytpm
     elif [ "$arch" = 'aarch64' ]; then
-        wget https://github.com/shjala/savemytpm/raw/main/out/savemytpm.arm64 > /dev/null 2>&1
+        wget https://github.com/shjala/savemytpm/raw/refs/heads/experiment-2/pre-built/savemytpm.arm64 > /dev/null 2>&1
         mv savemytpm.arm64 savemytpm
         chmod +x savemytpm
     fi
@@ -19,6 +19,7 @@ if [ $# -eq 0 ]; then
     echo "Usage: run.sh <command>"
     echo "Commands:"
     echo "  eve-9.3-recover : Verify TPM and disk certs, export disk key in encrypted cloud format for EVE 9.3"
+    echo "  eve-9.3-reseal : Reseal disk key under default PCR indexes and hash algorithm"
     echo "  eve-9.3-export-key-plain : Export disk key in plain text format for EVE 9.3"
     echo "  eve-check-cert : Check TPM and disk certs matching"
     exit 1
@@ -61,6 +62,19 @@ if [ $1 = "eve-9.3-export-key-plain" ]; then
     ./savemytpm --export-plain --output $outfile \
                 --pub-index 0x1900000 --priv-index 0x1800000 --srk-index 0x81000002 \
                 --pcr-hash sha1 --pcr-index "0, 1, 2, 3, 4, 6, 7, 8, 9, 13"
+fi
+
+if [ $1 = "eve-9.3-reseal" ]; then
+    echo "[+] Resealing disk key under default PCR indexes and hash algorithm"
+    ./savemytpm --reseal --raw-key "$2" \
+                --pub-index 0x1900000 --priv-index 0x1800000 --srk-index 0x81000002 \
+                --pcr-hash sha1 --pcr-index "0, 1, 2, 3, 4, 6, 7, 8, 9, 13"
+    if [ $? -eq 0 ]; then
+        echo "[+] Disk key resealed successfully"
+    else
+        echo "[-] Error when resealing disk key"
+        exit 1
+    fi
 fi
 
 

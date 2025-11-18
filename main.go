@@ -65,6 +65,12 @@ const (
 	// TpmQuoteKeyHdl is the well known TPM permanent handle for PCR Quote signing key
 	TpmQuoteKeyHdl tpmutil.Handle = 0x81000004
 
+	//TpmSealedDiskPrivHdl is the handle for constructing disk encryption key
+	TpmSealedDiskPrivHdl tpmutil.Handle = 0x1800000
+
+	//TpmSealedDiskPubHdl is the handle for constructing disk encryption key
+	TpmSealedDiskPubHdl tpmutil.Handle = 0x1900000
+
 	//MaxPasswdLength is the max length allowed for a TPM password
 	MaxPasswdLength = 7 //limit TPM password to this length
 
@@ -231,6 +237,7 @@ var (
 	checkCert         = flag.Bool("check-cert", false, "Check the device cert from disk against the TPM")
 	checkECDHTemplate = flag.Bool("check-ecdh-template", false, "Check the ECDH key template is correct")
 	useDiskPubKey     = flag.Bool("use-disk-pub-key", false, "For ECDH key gen, use the public key from the disk")
+	rawKey            = flag.String("raw-key", "", "Raw key for resealing")
 	logFile           = flag.String("log", "", "log file path")
 )
 
@@ -564,7 +571,36 @@ func main() {
 	}
 
 	if *reseal {
-		log("[!] not implemented yet...\n")
+		if *rawKey == "" {
+			log("[-] raw-key must be specified for reseal\n")
+			os.Exit(1)
+		}
+
+		hashAlgo := tpm2.AlgSHA1
+		if *pcrHash == "sha256" {
+			hashAlgo = tpm2.AlgSHA256
+		}
+
+		*pcrIndexes = strings.TrimSpace(*pcrIndexes)
+		pcrs, err := getPcrIndexes(strings.Split(*pcrIndexes, ","))
+		if err != nil {
+			log("error when parsing pcr-indexes: %v\n", err)
+			os.Exit(1)
+		}
+
+		log("[+] Resealing disk key under default PCR indexes and hash algorithm\n")
+		keyData, err := os.ReadFile(*rawKey)
+		if err != nil {
+			log("error when reading raw key file: %v\n", err)
+			os.Exit(1)
+		}
+
+		pcrSel := tpm2.PCRSelection{Hash: hashAlgo, PCRs: pcrs}
+		if err := sealDiskKey(keyData, pcrSel); err != nil {
+			log("error when resealing disk key: %v\n", err)
+			os.Exit(1)
+		}
+		log("[+] Disk key resealed successfully\n")
 		return
 	}
 
@@ -1341,4 +1377,82 @@ func eccIntToBytes(curve elliptic.Curve, i *big.Int) []byte {
 	bytes := i.Bytes()
 	curveBytes := (curve.Params().BitSize + 7) / 8
 	return append(make([]byte, curveBytes-len(bytes)), bytes...)
+}
+
+func sealDiskKey(key []byte, pcrSel tpm2.PCRSelection) error {
+	rw, err := tpm2.OpenTPM(*tpmPath)
+	if err != nil {
+		return err
+	}
+	defer rw.Close()
+
+	tpm2.NVUndefineSpace(rw, *tpmPass,
+		tpm2.HandleOwner, TpmSealedDiskPubHdl)
+
+	tpm2.NVUndefineSpace(rw, *tpmPass,
+		tpm2.HandleOwner, TpmSealedDiskPrivHdl)
+
+	//Note on any abrupt power failure at this point, and the result of it
+	//We should be ok, since the key supplied here can be
+	//a)
+	//  FetchSealedDiskKey(), which will again supply either same value
+	//  (if cloning it from non-sealed copy) or generate a new random value(fresh install)
+	//  both are ok, since we are yet to setup the vault in both the cases
+	//
+	//or b)
+	//  key received from Controller post attestation, in which case, we will
+	//  again get the same key back post-reboot as well
+
+	session, policy, err := policyPCRSession(rw, pcrSel)
+	if err != nil {
+		return fmt.Errorf("PolicyPCRSession failed: %v", err)
+	}
+
+	//Don't need the handle, we need only the policy for sealing
+	if err := tpm2.FlushContext(rw, session); err != nil {
+		return fmt.Errorf("unable to flush session handle %v: %v", session, err)
+	}
+
+	priv, public, err := tpm2.Seal(rw, TpmSRKHdl, *tpmPass, *tpmPass, policy, key)
+	if err != nil {
+		return fmt.Errorf("unable to seal key: %v", err)
+	}
+
+	// Define space in NV storage and clean up afterwards or subsequent runs will fail.
+	if err := tpm2.NVDefineSpace(rw,
+		tpm2.HandleOwner,
+		TpmSealedDiskPrivHdl,
+		*tpmPass,
+		*tpmPass,
+		nil,
+		tpm2.AttrOwnerWrite|tpm2.AttrOwnerRead,
+		uint16(len(priv)),
+	); err != nil {
+		return fmt.Errorf("NVDefineSpace %v failed: %v", TpmSealedDiskPrivHdl, err)
+	}
+
+	// Write the private data
+	if err := tpm2.NVWrite(rw, tpm2.HandleOwner, TpmSealedDiskPrivHdl,
+		*tpmPass, priv, 0); err != nil {
+		return fmt.Errorf("NVWrite %v failed: %v", TpmSealedDiskPrivHdl, err)
+	}
+
+	// Define space in NV storage
+	if err := tpm2.NVDefineSpace(rw,
+		tpm2.HandleOwner,
+		TpmSealedDiskPubHdl,
+		*tpmPass,
+		*tpmPass,
+		nil,
+		tpm2.AttrOwnerWrite|tpm2.AttrOwnerRead,
+		uint16(len(public)),
+	); err != nil {
+		return fmt.Errorf("NVDefineSpace %v failed: %v", TpmSealedDiskPubHdl, err)
+	}
+	// Write the public data
+	if err := tpm2.NVWrite(rw, tpm2.HandleOwner, TpmSealedDiskPubHdl,
+		*tpmPass, public, 0); err != nil {
+		return fmt.Errorf("NVWrite %v failed: %v", TpmSealedDiskPubHdl, err)
+	}
+	return nil
 }

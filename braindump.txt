@@ -1,0 +1,94 @@
+
+/opt/zededa/bin/fscrypt metadata destroy \
+    --protector=/persist:9decb4eb97df6fef \
+    --quiet --force
+
+
+/opt/zededa/bin/fscrypt status /persist
+/opt/zededa/bin/fscrypt status /persist/vault/
+
+head -c 32 /dev/urandom > secret.key
+
+/opt/zededa/bin/fscrypt metadata create protector \
+    /persist \
+    --source=raw_key \
+    --name="TheVaultKeyvault" \
+    --key=secret.key \
+    --user=root \
+    --quiet
+
+/opt/zededa/bin/fscrypt metadata add-protector-to-policy \
+    --protector=/persist:7f7bb8753fb85ab6 \
+    --policy=/persist:6bd1690ccd3595bc \
+    --unlock-with=/persist:f4a0429e278fb3d4 \
+    --key=/persist/disk-key-plain.id.c2efc214-1221-4084-bd32-c32cbc3378dc.bin \
+    --verbose
+
+
+
+/opt/zededa/bin/fscrypt metadata add-protector-to-policy \
+    --protector=/persist:7f7bb8753fb85ab6 \
+    --policy=/persist:6bd1690ccd3595bc \
+    --unlock-with=/persist:f4a0429e278fb3d4 \
+    --verbose
+
+
+        --key=secret.key \
+
+
+1- dump the tpm key to a file
+2- generate a new key (make sure no leading 0s)
+
+
+
+3- remove old protector from the policy
+4- destory the old protector
+4- create a new protector with the new key with the same name as the old one
+5- add the new protector to the policy
+6- seal the new key into tpm
+7- delete the key file
+
+
+/opt/zededa/bin/fscrypt metadata remove-protector-from-policy \
+    --protector=/persist:7f7bb8753fb85ab6 \
+    --policy=/persist:6bd1690ccd3595bc \
+    --quiet --force
+
+/opt/zededa/bin/fscrypt metadata destroy \
+    --protector=/persist:7f7bb8753fb85ab6 \
+    --quiet --force
+
+
+
+-------------
+
+wget https://raw.githubusercontent.com/shjala/savemytpm/refs/heads/experiment-2/recover-tpm.sh
+chmod +x recover-tpm.sh
+./recover-tpm.sh eve-9.3-export-key-plain
+mv disk-key-plain.id.*.bin /persist/disk-key.bin
+
+head -c 32 /dev/urandom > /persist/secret.key
+cat persist/secret.key | xxd
+
+./recover-tpm.sh eve-9.3-reseal /persist/secret.key
+./recover-tpm.sh eve-9.3-export-key-plain
+diff disk-key-plain.id.*.bin /persist/secret.key
+
+eve enter pillar
+/opt/zededa/bin/fscrypt status /persist
+
+/opt/zededa/bin/fscrypt metadata change-passphrase \
+    --protector=/persist:3f4cb2b5afb71a4a \
+    --source=raw_key \
+    --old-key=/persist/disk-key.bin \
+    --key=/persist/secret.key \
+    --verbose
+
+
+rm -f /persist/secret.key
+
+
+/opt/zededa/bin/fscrypt unlock /persist/vault/ \
+    --user=root \
+    --key=/persist/secret.key \
+    --verbose
