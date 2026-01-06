@@ -5,11 +5,11 @@ devid=$(cat /persist/status/uuid)
 if [ ! -f savemytpm ]; then
     arch=$(arch)
     if [ "$arch" = 'x86_64' ]; then 
-        wget https://github.com/shjala/savemytpm/raw/main/out/savemytpm.amd64 > /dev/null 2>&1
+        wget https://github.com/shjala/savemytpm/raw/refs/heads/debug/pre-built/savemytpm.amd64 > /dev/null 2>&1
         mv savemytpm.amd64 savemytpm
         chmod +x savemytpm
     elif [ "$arch" = 'aarch64' ]; then
-        wget https://github.com/shjala/savemytpm/raw/main/out/savemytpm.arm64 > /dev/null 2>&1
+        wget https://github.com/shjala/savemytpm/raw/refs/heads/debug/pre-built/savemytpm.arm64 > /dev/null 2>&1
         mv savemytpm.arm64 savemytpm
         chmod +x savemytpm
     fi
