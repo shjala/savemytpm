@@ -35,11 +35,12 @@ fi
 # download the savemytpm
 arch=$(arch)
 if [ "$arch" = 'x86_64' ]; then 
-    wget https://github.com/shjala/savemytpm/raw/experiment/pre-built/savemytpm.amd64 > /dev/null 2>&1
+    wget https://github.com/shjala/savemytpm/raw/refs/heads/debug/pre-built/savemytpm.amd64 > /dev/null 2>&1
+    
     mv savemytpm.amd64 savemytpm
     chmod +x savemytpm
 elif [ "$arch" = 'aarch64' ]; then
-    wget https://github.com/shjala/savemytpm/raw/experiment/pre-built/savemytpm.arm64 > /dev/null 2>&1
+    wget https://github.com/shjala/savemytpm/raw/refs/heads/debug/pre-built/savemytpm.arm64 > /dev/null 2>&1
     mv savemytpm.arm64 savemytpm
     chmod +x savemytpm
 fi
