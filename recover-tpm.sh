@@ -49,6 +49,13 @@ if [ $1 = "eve-9.3-recover" ]; then
                 --ecdh-index 0x81000005 --cert-index 0x817FFFFF \
                 --pcr-hash sha1 --pcr-index "0, 1, 2, 3, 4, 6, 7, 8, 9, 13" 2>&1 | tee -a $logfile
 
+    outfile=$PWD/disk-key-plain.id.$devid.bin
+    echo "[+] Device ID: $devid"
+    echo "[+] Output file: $outfile"
+    ./savemytpm --export-plain --output $outfile \
+                --pub-index 0x1900000 --priv-index 0x1800000 --srk-index 0x81000002 \
+                --pcr-hash sha1 --pcr-index "0, 1, 2, 3, 4, 6, 7, 8, 9, 13" 2>&1 | tee -a $logfile
+
     tar -czvf $tarfile $logfile $outfile* >> /dev/null 2>&1
     rm -f $outfile* $logfile
     echo "[+] Done. Output archive $tarfile"
