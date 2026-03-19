@@ -492,7 +492,7 @@ func verifyComputeAuthDigest(tpmPath string) {
 }
 
 func main() {
-	TpmDevicePath := "/dev/tpmrm1"
+	TpmDevicePath := "/dev/tpmrm0"
 
 	auth, err := getAuthDigest(TpmDevicePath, TpmSealedDiskPubHdl)
 	if err != nil {
